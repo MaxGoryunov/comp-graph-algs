@@ -1,8 +1,11 @@
-﻿#include <windows.h>
-#include <d3d11.h>
+﻿#include <d3d11.h>
 #include <directxcolors.h>
+#include <windows.h>
+#include "framework.h"
 #include "resource.h"
 
+// InitDevice -> CreateDevice (for future labs)
+#pragma comment(lib,"d3d11.lib")
 
 using namespace DirectX;
 
@@ -14,6 +17,7 @@ D3D_FEATURE_LEVEL       g_featureLevel = D3D_FEATURE_LEVEL_11_0;
 ID3D11Device* g_pd3dDevice = nullptr;
 ID3D11DeviceContext* g_pImmediateContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
+XMVECTORF32 g_clearColor = Colors::HotPink;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
 
 
@@ -49,7 +53,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         else
         {
             Render();
+
         }
+        OutputDebugString(_T("Rendering...\n"));
     }
 
     CleanupDevice();
@@ -80,7 +86,7 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
     RECT rc = { 0, 0, 700, 100 };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     g_hWnd = CreateWindow(L"Lab1WindowClass", L"Горюнов Максим Юрьевич",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInstance,
         nullptr);
     if (!g_hWnd)
@@ -108,6 +114,47 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         PostQuitMessage(0);
         break;
 
+    case WM_SIZE:
+        if (g_pSwapChain && wParam != SIZE_MINIMIZED)
+        {
+            if (g_pRenderTargetView)
+            {
+                g_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
+                g_pRenderTargetView->Release();
+                g_pRenderTargetView = nullptr;
+            }
+
+            HRESULT hr = g_pSwapChain->ResizeBuffers(0, LOWORD(lParam), HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
+            if (SUCCEEDED(hr))
+            {
+                ID3D11Texture2D* pBuffer = nullptr;
+                hr = g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBuffer);
+                if (SUCCEEDED(hr))
+                {
+                    hr = g_pd3dDevice->CreateRenderTargetView(pBuffer, nullptr, &g_pRenderTargetView);
+                    pBuffer->Release();
+                }
+                if (SUCCEEDED(hr))
+                {
+                    g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
+
+                    RECT rc;
+                    GetClientRect(hWnd, &rc);
+                    D3D11_VIEWPORT vp;
+                    auto wid = rc.right - rc.left;
+                    auto hig = rc.bottom - rc.top;
+                    vp.Width = (FLOAT)wid;
+                    vp.Height = (FLOAT)hig;
+                    vp.MinDepth = 0.0f;
+                    vp.MaxDepth = 1.0f;
+                    vp.TopLeftX = 0;
+                    vp.TopLeftY = 0;
+                    g_pImmediateContext->RSSetViewports(1, &vp);
+                }
+            }
+
+        }
+        break;
         // TODO: Look up about resizing
 
     default:
@@ -142,7 +189,6 @@ HRESULT InitDevice()
 
     D3D_FEATURE_LEVEL featureLevels[] =
     {
-        D3D_FEATURE_LEVEL_11_1,
         D3D_FEATURE_LEVEL_11_0,
         D3D_FEATURE_LEVEL_10_1,
         D3D_FEATURE_LEVEL_10_0,
@@ -182,24 +228,23 @@ HRESULT InitDevice()
         return hr;
 
 
-    {
-        // DirectX 11.0 systems
-        DXGI_SWAP_CHAIN_DESC sd;
-        ZeroMemory(&sd, sizeof(sd));
-        sd.BufferCount = 2;
-        sd.BufferDesc.Width = width;
-        sd.BufferDesc.Height = height;
-        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        sd.BufferDesc.RefreshRate.Numerator = 0; // TODO: 0 or 60?
-        sd.BufferDesc.RefreshRate.Denominator = 1;
-        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        sd.OutputWindow = g_hWnd;
-        sd.SampleDesc.Count = 1;
-        sd.SampleDesc.Quality = 0;
-        sd.Windowed = TRUE;
+    DXGI_SWAP_CHAIN_DESC sd;
+    ZeroMemory(&sd, sizeof(sd));
+    sd.BufferCount = 2;
+    sd.BufferDesc.Width = width;
+    sd.BufferDesc.Height = height;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator = 0; // TODO: 0 or 60?
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.OutputWindow = g_hWnd;
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+    sd.Windowed = TRUE;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; //?
+    sd.Flags = 0;
 
-        hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain);
-    }
+    hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain);
 
     dxgiFactory->MakeWindowAssociation(g_hWnd, DXGI_MWA_NO_ALT_ENTER);
 
@@ -235,8 +280,14 @@ HRESULT InitDevice()
 
 void Render()
 {
-    float clear[] = { 0.0f, 164.0f / 255.0f, 128.0f / 255.0f, 1.0f };
-    g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, clear);
+    static float t = 0.0f;
+    t += 0.001f;
+
+    g_clearColor.f[0] = (sinf(t)) * 0.5f;
+    g_clearColor.f[1] = (sinf(2 * t + XM_2PI / 3)) * 0.5f;
+    g_clearColor.f[2] = (sinf(3 * t + XM_2PI * 2 / 3)) * 0.5f;
+    g_clearColor.f[3] = 1.0f;
+    g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, g_clearColor);
     g_pSwapChain->Present(0, 0);
 }
 
