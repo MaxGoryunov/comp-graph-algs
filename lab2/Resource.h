@@ -1,6 +1,6 @@
 ﻿//{{NO_DEPENDENCIES}}
 // Включаемый файл, созданный в Microsoft Visual C++.
-// Используется lab_2.rc
+// Используется lab2.rc
 
 #define IDS_APP_TITLE			103
 
