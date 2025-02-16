@@ -47,11 +47,7 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="PixelShader.hlsl">
-      <Filter>Исходные файлы</Filter>
-    </FxCompile>
-    <FxCompile Include="VertexShader.hlsl">
-      <Filter>Исходные файлы</Filter>
-    </FxCompile>
+    <CopyFileToFolders Include="PixelShader.hlsl" />
+    <CopyFileToFolders Include="VertexShader.hlsl" />
   </ItemGroup>
 </Project>
