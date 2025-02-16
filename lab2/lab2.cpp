@@ -103,7 +103,7 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
         return E_FAIL;
 
     g_hInst = hInstance;
-    RECT rc = { 0, 0, 700, 600 };
+    RECT rc = { 0, 0, 700, 100 };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     g_hWnd = CreateWindow(L"Lab1WindowClass", L"Горюнов Максим Юрьевич",
         WS_OVERLAPPEDWINDOW,
