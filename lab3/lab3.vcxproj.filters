@@ -46,4 +46,12 @@
       <Filter>Файлы ресурсов</Filter>
     </Image>
   </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="VertexShader.hlsl">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="PixelShader.hlsl">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
+  </ItemGroup>
 </Project>
