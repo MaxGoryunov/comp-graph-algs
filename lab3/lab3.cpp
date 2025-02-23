@@ -493,16 +493,22 @@ HRESULT InitDevice()
 
     g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.Usage = D3D11_USAGE_DEFAULT; // upd
     bd.ByteWidth = sizeof(CBWorld);
     bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    bd.CPUAccessFlags = 0;
     hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pConstantBufferWorld);
     if (FAILED(hr))
         return hr;
 
-    bd.ByteWidth = sizeof(CBViewProjection);
-    hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pConstantBufferViewProjection);
+    D3D11_BUFFER_DESC vpBd;
+    ZeroMemory(&vpBd, sizeof(vpBd));
+
+    vpBd.Usage = D3D11_USAGE_DYNAMIC;
+    vpBd.ByteWidth = sizeof(CBViewProjection);
+    vpBd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    vpBd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = g_pd3dDevice->CreateBuffer(&vpBd, nullptr, &g_pConstantBufferViewProjection);
     if (FAILED(hr))
         return hr;
 
@@ -635,18 +641,27 @@ void Render()
     g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, Colors::MidnightBlue);
 
     D3D11_MAPPED_SUBRESOURCE mappedResource;
-    CBWorld cbWorld;
+
+
+    CBWorld cbWorld = { XMMatrixTranspose(g_World) };
+    g_pImmediateContext->UpdateSubresource(g_pConstantBufferWorld, 0, nullptr, &cbWorld, 0, 0);
+    /*CBWorld cbWorld;
     cbWorld.mWorld = XMMatrixTranspose(g_World);
     g_pImmediateContext->Map(g_pConstantBufferWorld, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     memcpy(mappedResource.pData, &cbWorld, sizeof(CBWorld));
-    g_pImmediateContext->Unmap(g_pConstantBufferWorld, 0);
+    g_pImmediateContext->Unmap(g_pConstantBufferWorld, 0);*/
+    
 
     CBViewProjection cbViewProjection;
     cbViewProjection.mView = XMMatrixTranspose(g_View);
     cbViewProjection.mProjection = XMMatrixTranspose(g_Projection);
-    g_pImmediateContext->Map(g_pConstantBufferViewProjection, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-    memcpy(mappedResource.pData, &cbViewProjection, sizeof(CBViewProjection));
-    g_pImmediateContext->Unmap(g_pConstantBufferViewProjection, 0);
+    HRESULT hr = g_pImmediateContext->Map(g_pConstantBufferViewProjection, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    if (SUCCEEDED(hr))
+    {
+        memcpy(mappedResource.pData, &cbViewProjection, sizeof(CBViewProjection));
+        g_pImmediateContext->Unmap(g_pConstantBufferViewProjection, 0);
+    }
+
 
     g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
 
