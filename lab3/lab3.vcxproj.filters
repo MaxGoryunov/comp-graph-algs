@@ -53,5 +53,8 @@
     <CopyFileToFolders Include="PixelShader.hlsl">
       <Filter>Файлы ресурсов</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="VPfx.fx">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

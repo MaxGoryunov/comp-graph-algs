@@ -1,6 +1,7 @@
-﻿#include <d3d11.h>
+﻿#include <d3d11_1.h>
 #include <directxcolors.h>
 #include <windows.h>
+#include <directxmath.h>
 #include "framework.h"
 #include "resource.h"
 #include <d3dcompiler.h>
@@ -17,26 +18,50 @@ struct SimpleVertex
     XMFLOAT4 Color;
 };
 
+// Consants
+
+struct CBWorld
+{
+    XMMATRIX mWorld;
+};
+
+struct CBViewProjection
+{
+    XMMATRIX mView;
+    XMMATRIX mProjection;
+};
+
 
 HINSTANCE               g_hInst = nullptr;
 HWND                    g_hWnd = nullptr;
 D3D_DRIVER_TYPE         g_driverType = D3D_DRIVER_TYPE_NULL;
 D3D_FEATURE_LEVEL       g_featureLevel = D3D_FEATURE_LEVEL_11_0;
 ID3D11Device* g_pd3dDevice = nullptr;
+ID3D11Device1* g_pd3dDevice1 = nullptr;
 ID3D11DeviceContext* g_pImmediateContext = nullptr;
+ID3D11DeviceContext1* g_pImmediateContext1 = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
+IDXGISwapChain1* g_pSwapChain1 = nullptr;
 XMVECTORF32 g_clearColor = Colors::HotPink;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
 ID3D11VertexShader* g_pVertexShader = nullptr;
 ID3D11PixelShader* g_pPixelShader = nullptr;
 ID3D11InputLayout* g_pVertexLayout = nullptr;
 ID3D11Buffer* g_pVertexBuffer = nullptr;
+ID3D11Buffer* g_pIndexBuffer = nullptr;
+ID3D11Buffer* g_pConstantBufferWorld = nullptr;
+ID3D11Buffer* g_pConstantBufferViewProjection = nullptr;
+XMMATRIX                g_World;
+XMMATRIX                g_View;
+XMMATRIX                g_Projection;
+float g_CameraPlace = 0.0f;
+float g_CameraAzim = 0.0f;
+
 
 
 HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow);
 HRESULT InitDevice();
 void CleanupDevice();
-HRESULT InitGraphics();
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 void Render();
 
@@ -55,12 +80,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return 0;
     }
 
-    // AFTER INIT
-    if (FAILED(InitGraphics()))
-    {
-        CleanupDevice();
-        return 0;
-    }
 
     MSG msg = { 0 };
     while (WM_QUIT != msg.message)
@@ -117,6 +136,33 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
     return S_OK;
 }
 
+//For fx
+HRESULT CompileShadersFX(WCHAR* szFileName, LPCSTR szEntryPoint, LPCSTR szShaderModel, ID3DBlob** ppBlobOut)
+{
+    HRESULT hr = S_OK;
+
+    DWORD dwShaderFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+#ifdef _DEBUG
+    dwShaderFlags |= D3DCOMPILE_DEBUG;
+    dwShaderFlags |= D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+
+    ID3DBlob* pErrorBlob = nullptr;
+    hr = D3DCompileFromFile(szFileName, nullptr, nullptr, szEntryPoint, szShaderModel,
+        dwShaderFlags, 0, ppBlobOut, &pErrorBlob);
+    if (FAILED(hr))
+    {
+        if (pErrorBlob)
+        {
+            OutputDebugStringA(reinterpret_cast<const char*>(pErrorBlob->GetBufferPointer()));
+            pErrorBlob->Release();
+        }
+        return hr;
+    }
+    if (pErrorBlob) pErrorBlob->Release();
+
+    return S_OK;
+}
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -144,39 +190,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 g_pRenderTargetView = nullptr;
             }
 
-            HRESULT hr = g_pSwapChain->ResizeBuffers(0, LOWORD(lParam), HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
-            if (SUCCEEDED(hr))
-            {
-                ID3D11Texture2D* pBuffer = nullptr;
-                hr = g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBuffer);
-                if (SUCCEEDED(hr))
-                {
-                    hr = g_pd3dDevice->CreateRenderTargetView(pBuffer, nullptr, &g_pRenderTargetView);
-                    pBuffer->Release();
-                }
-                if (SUCCEEDED(hr))
-                {
-                    g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
+            g_pSwapChain->ResizeBuffers(0, LOWORD(lParam), HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
 
-                    RECT rc;
-                    GetClientRect(hWnd, &rc);
-                    D3D11_VIEWPORT vp;
-                    auto wid = rc.right - rc.left;
-                    auto hig = rc.bottom - rc.top;
-                    vp.Width = (FLOAT)wid;
-                    vp.Height = (FLOAT)hig;
-                    vp.MinDepth = 0.0f;
-                    vp.MaxDepth = 1.0f;
-                    vp.TopLeftX = 0;
-                    vp.TopLeftY = 0;
-                    g_pImmediateContext->RSSetViewports(1, &vp);
-                }
+            ID3D11Texture2D* pBackBuffer = nullptr;
+            g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&pBackBuffer));
+            if (pBackBuffer)
+            {
+                g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_pRenderTargetView);
+                pBackBuffer->Release();
             }
 
+            g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
+
+            D3D11_VIEWPORT vp;
+            vp.Width = (FLOAT)LOWORD(lParam);
+            vp.Height = (FLOAT)HIWORD(lParam);
+            vp.MinDepth = 0.0f;
+            vp.MaxDepth = 1.0f;
+            vp.TopLeftX = 0;
+            vp.TopLeftY = 0;
+            g_pImmediateContext->RSSetViewports(1, &vp);
+
+
+            g_Projection = XMMatrixPerspectiveFovLH(XM_PIDIV2, vp.Width / vp.Height, 0.01f, 100.0f);
         }
         break;
         // TODO: Look up about resizing
 
+    case WM_KEYDOWN:
+        switch (wParam)
+        {
+        case VK_UP:
+            g_CameraPlace += 0.05f;
+            break;
+        case VK_DOWN:
+            g_CameraPlace -= 0.05f;
+            break;
+        case VK_LEFT:
+            g_CameraAzim -= 0.05f;
+            break;
+        case VK_RIGHT:
+            g_CameraAzim += 0.05f;
+            break;
+        }
+        break;
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
@@ -209,6 +266,7 @@ HRESULT InitDevice()
 
     D3D_FEATURE_LEVEL featureLevels[] =
     {
+        D3D_FEATURE_LEVEL_11_1, // ?
         D3D_FEATURE_LEVEL_11_0,
         D3D_FEATURE_LEVEL_10_1,
         D3D_FEATURE_LEVEL_10_0,
@@ -221,6 +279,11 @@ HRESULT InitDevice()
         hr = D3D11CreateDevice(nullptr, g_driverType, nullptr, createDeviceFlags, featureLevels, numFeatureLevels,
             D3D11_SDK_VERSION, &g_pd3dDevice, &g_featureLevel, &g_pImmediateContext);
 
+        if (hr == E_INVALIDARG)
+        {
+            hr = D3D11CreateDevice(nullptr, g_driverType, nullptr, createDeviceFlags, &featureLevels[1], numFeatureLevels - 1,
+                D3D11_SDK_VERSION, &g_pd3dDevice, &g_featureLevel, &g_pImmediateContext);
+        }
 
         if (SUCCEEDED(hr))
             break;
@@ -247,27 +310,60 @@ HRESULT InitDevice()
     if (FAILED(hr))
         return hr;
 
+    IDXGIFactory2* dxgiFactory2 = nullptr;
+    hr = dxgiFactory->QueryInterface(__uuidof(IDXGIFactory2), reinterpret_cast<void**>(&dxgiFactory2));
+    if (dxgiFactory2)
+    {
+        hr = g_pd3dDevice->QueryInterface(__uuidof(ID3D11Device1), reinterpret_cast<void**>(&g_pd3dDevice1));
+        if (SUCCEEDED(hr))
+        {
+            (void)g_pImmediateContext->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&g_pImmediateContext1));
+        }
 
-    DXGI_SWAP_CHAIN_DESC sd;
-    ZeroMemory(&sd, sizeof(sd));
-    sd.BufferCount = 2;
-    sd.BufferDesc.Width = width;
-    sd.BufferDesc.Height = height;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 0; // TODO: 0 or 60?
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = g_hWnd;
-    sd.SampleDesc.Count = 1;
-    sd.SampleDesc.Quality = 0;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; //?
-    sd.Flags = 0;
+        DXGI_SWAP_CHAIN_DESC1 sd;
+        ZeroMemory(&sd, sizeof(sd));
+        sd.Width = width;
+        sd.Height = height;
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.SampleDesc.Count = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.BufferCount = 2;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sd.Flags = 0;
 
-    hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain);
+        hr = dxgiFactory2->CreateSwapChainForHwnd(g_pd3dDevice, g_hWnd, &sd, nullptr, nullptr, &g_pSwapChain1);
+        if (SUCCEEDED(hr))
+        {
+            hr = g_pSwapChain1->QueryInterface(__uuidof(IDXGISwapChain), reinterpret_cast<void**>(&g_pSwapChain));
+        }
+
+        dxgiFactory2->Release();
+    }
+    else {
+        DXGI_SWAP_CHAIN_DESC sd;
+        ZeroMemory(&sd, sizeof(sd));
+        sd.BufferCount = 1;
+        sd.BufferDesc.Width = width;
+        sd.BufferDesc.Height = height;
+        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.BufferDesc.RefreshRate.Numerator = 0; // TODO: 0 or 60?
+        sd.BufferDesc.RefreshRate.Denominator = 1;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.OutputWindow = g_hWnd;
+        sd.SampleDesc.Count = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.Windowed = TRUE;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; //?
+        sd.Flags = 0;
+
+        hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain);
+    }
+
+
+    
 
     dxgiFactory->MakeWindowAssociation(g_hWnd, DXGI_MWA_NO_ALT_ENTER);
-
     dxgiFactory->Release();
 
     if (FAILED(hr))
@@ -293,6 +389,131 @@ HRESULT InitDevice()
     vp.TopLeftX = 0;
     vp.TopLeftY = 0;
     g_pImmediateContext->RSSetViewports(1, &vp);
+
+    ID3DBlob* pVSBlob = nullptr;
+    hr = CompileShadersFX(const_cast<wchar_t*>(L"VPfx.fx"), "VS", "vs_4_0", &pVSBlob);
+    if (FAILED(hr))
+    {
+        MessageBox(nullptr, L"The FX file cannot be compiled. Please run this executable from the directory that contains the FX file.", L"Error", MB_OK);
+        return hr;
+    }
+
+    hr = g_pd3dDevice->CreateVertexShader(pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), nullptr, &g_pVertexShader);
+    if (FAILED(hr))
+    {
+        pVSBlob->Release();
+        return hr;
+    }
+
+    D3D11_INPUT_ELEMENT_DESC layout[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+    UINT numElements = ARRAYSIZE(layout);
+
+    hr = g_pd3dDevice->CreateInputLayout(layout, numElements, pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &g_pVertexLayout);
+    pVSBlob->Release();
+    if (FAILED(hr))
+        return hr;
+
+    g_pImmediateContext->IASetInputLayout(g_pVertexLayout);
+
+    ID3DBlob* pPSBlob = nullptr;
+    hr = CompileShadersFX(const_cast<wchar_t*>(L"VPfx.fx"), "PS", "ps_4_0", &pPSBlob);
+    if (FAILED(hr))
+    {
+        MessageBox(nullptr, L"The FX file cannot be compiled. Please run this executable from the directory that contains the FX file.", L"Error", MB_OK);
+        return hr;
+    }
+
+    hr = g_pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), nullptr, &g_pPixelShader);
+    pPSBlob->Release();
+    if (FAILED(hr))
+        return hr;
+
+    SimpleVertex vertices[] =
+    {
+        { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+        { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+        { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
+        { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+        { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+        { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+        { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+        { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+    };
+    D3D11_BUFFER_DESC bd;
+    ZeroMemory(&bd, sizeof(bd));
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.ByteWidth = sizeof(SimpleVertex) * 8;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.CPUAccessFlags = 0;
+    D3D11_SUBRESOURCE_DATA InitData;
+    ZeroMemory(&InitData, sizeof(InitData));
+    InitData.pSysMem = vertices;
+    hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pVertexBuffer);
+    if (FAILED(hr))
+        return hr;
+
+    UINT stride = sizeof(SimpleVertex);
+    UINT offset = 0;
+    g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
+
+    WORD indices[] =
+    {
+        3,1,0,
+        2,1,3,
+
+        0,5,4,
+        1,5,0,
+
+        3,4,7,
+        0,4,3,
+
+        1,6,5,
+        2,6,1,
+
+        2,7,6,
+        3,7,2,
+
+        6,4,5,
+        7,4,6,
+    };
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.ByteWidth = sizeof(WORD) * 36;
+    bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    bd.CPUAccessFlags = 0;
+    InitData.pSysMem = indices;
+    hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pIndexBuffer);
+    if (FAILED(hr))
+        return hr;
+
+    g_pImmediateContext->IASetIndexBuffer(g_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.ByteWidth = sizeof(CBWorld);
+    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pConstantBufferWorld);
+    if (FAILED(hr))
+        return hr;
+
+    bd.ByteWidth = sizeof(CBViewProjection);
+    hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pConstantBufferViewProjection);
+    if (FAILED(hr))
+        return hr;
+
+    g_World = XMMatrixIdentity();
+
+    XMVECTOR Eye = XMVectorSet(0.0f, 1.0f, -5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    g_View = XMMatrixLookAtLH(Eye, At, Up);
+
+    g_Projection = XMMatrixPerspectiveFovLH(XM_PIDIV2, width / (FLOAT)height, 0.01f, 100.0f);
 
     return S_OK;
 }
@@ -379,29 +600,63 @@ HRESULT InitGraphics()
 
 void Render()
 {
+    static float t = 0.0f;
+    if (g_driverType == D3D_DRIVER_TYPE_REFERENCE)
+    {
+        t += (float)XM_PI * 0.0125f;
+    }
+    else
+    {
+        static ULONGLONG timeStart = 0;
+        ULONGLONG timeCur = GetTickCount64();
+        if (timeStart == 0)
+            timeStart = timeCur;
+        t = (timeCur - timeStart) / 1000.0f;
+    }
+
+    g_World = XMMatrixRotationY(t);
+
+    float zTranslation = sin(t) * 2.0f;
+    XMMATRIX translationMatrix = XMMatrixTranslation(0.0f, 0.0f, zTranslation);
+
+    g_World = g_World * translationMatrix;
+
+    XMMATRIX rotationMatrix = XMMatrixRotationRollPitchYaw(g_CameraPlace, g_CameraAzim, 0.0f);
+    XMVECTOR Eye = XMVectorSet(0.0f, 1.0f, -5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+    Eye = XMVector3TransformCoord(Eye, rotationMatrix);
+    At = XMVector3TransformCoord(At, rotationMatrix);
+    Up = XMVector3TransformNormal(Up, rotationMatrix);
+
+    g_View = XMMatrixLookAtLH(Eye, At, Up);
+
+    g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, Colors::MidnightBlue);
+
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+    CBWorld cbWorld;
+    cbWorld.mWorld = XMMatrixTranspose(g_World);
+    g_pImmediateContext->Map(g_pConstantBufferWorld, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    memcpy(mappedResource.pData, &cbWorld, sizeof(CBWorld));
+    g_pImmediateContext->Unmap(g_pConstantBufferWorld, 0);
+
+    CBViewProjection cbViewProjection;
+    cbViewProjection.mView = XMMatrixTranspose(g_View);
+    cbViewProjection.mProjection = XMMatrixTranspose(g_Projection);
+    g_pImmediateContext->Map(g_pConstantBufferViewProjection, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    memcpy(mappedResource.pData, &cbViewProjection, sizeof(CBViewProjection));
+    g_pImmediateContext->Unmap(g_pConstantBufferViewProjection, 0);
+
     g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
 
-    float ClearColor[4]{};
-    static float t = 0.0f;
-    t += 0.005f;
-
-    ClearColor[0] = (sinf(t) + 1.0f) * 0.5f;
-    ClearColor[1] = (sinf(t + XM_2PI / 3) + 1.0f) * 0.5f;
-    ClearColor[2] = (sinf(t + XM_2PI * 2 / 3) + 1.0f) * 0.5f;
-    ClearColor[3] = 1.0f;
-    g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, ClearColor);
-
-    UINT stride = sizeof(SimpleVertex);
-    UINT offset = 0;
-    g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
-    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    g_pImmediateContext->IASetInputLayout(g_pVertexLayout);
-
     g_pImmediateContext->VSSetShader(g_pVertexShader, nullptr, 0);
+    g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBufferWorld);
+    g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pConstantBufferViewProjection);
     g_pImmediateContext->PSSetShader(g_pPixelShader, nullptr, 0);
+    g_pImmediateContext->DrawIndexed(36, 0, 0);
 
-    g_pImmediateContext->Draw(3, 0);
-    g_pSwapChain->Present(1, 0);
+    g_pSwapChain->Present(0, 0);
 }
 
 
@@ -409,11 +664,17 @@ void Render()
 void CleanupDevice()
 {
     if (g_pImmediateContext) g_pImmediateContext->ClearState();
+    if (g_pConstantBufferWorld) g_pConstantBufferWorld->Release();
+    if (g_pConstantBufferViewProjection) g_pConstantBufferViewProjection->Release();
     if (g_pRenderTargetView) g_pRenderTargetView->Release();
     if (g_pSwapChain) g_pSwapChain->Release();
+    if (g_pSwapChain1) g_pSwapChain1->Release();
     if (g_pImmediateContext) g_pImmediateContext->Release();
+    if (g_pImmediateContext1) g_pImmediateContext1->Release();
     if (g_pd3dDevice) g_pd3dDevice->Release();
+    if (g_pd3dDevice1) g_pd3dDevice1->Release();
     if (g_pVertexBuffer) g_pVertexBuffer->Release();
+    if (g_pIndexBuffer) g_pIndexBuffer->Release();
     if (g_pVertexLayout) g_pVertexLayout->Release();
     if (g_pVertexShader) g_pVertexShader->Release();
     if (g_pPixelShader) g_pPixelShader->Release();
