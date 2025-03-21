@@ -27,9 +27,15 @@
     <ClInclude Include="lab4.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="DDSTextureLoader.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="lab4.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>
@@ -45,5 +51,11 @@
     <Image Include="lab4.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="Cube.fx" />
+    <CopyFileToFolders Include="SkyBox.fx" />
+    <CopyFileToFolders Include="cube.dds" />
+    <CopyFileToFolders Include="skybox.dds" />
   </ItemGroup>
 </Project>

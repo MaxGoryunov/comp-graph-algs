@@ -139,20 +139,34 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DDSTextureLoader.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="lab4.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="DDSTextureLoader.cpp" />
     <ClCompile Include="lab4.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="lab4.rc" />
   </ItemGroup>
   <ItemGroup>
+    <CopyFileToFolders Include="cube.dds" />
     <Image Include="lab4.ico" />
+    <CopyFileToFolders Include="skybox.dds" />
     <Image Include="small.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="Cube.fx">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="SkyBox.fx">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
