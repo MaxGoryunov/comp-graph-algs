@@ -26,7 +26,6 @@ PS_INPUT SkyboxVS(VS_INPUT input)
 TextureCube skyboxTexture : register(t0);
 SamplerState samLinear : register(s0);
 
-
 float4 SkyboxPS(PS_INPUT input) : SV_Target
 {
     return skyboxTexture.Sample(samLinear, input.tex);
