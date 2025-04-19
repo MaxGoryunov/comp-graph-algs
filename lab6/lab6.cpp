@@ -25,6 +25,8 @@ using namespace DirectX;
 struct SimpleVertex
 {
 	XMFLOAT3 pos;
+	XMFLOAT3 normal;
+	XMFLOAT3 tangent;
 	XMFLOAT2 tex;
 };
 
@@ -39,6 +41,7 @@ struct Lighting {
 	XMFLOAT4 color;
 	XMFLOAT4 attenuation;
 };
+
 
 // Consants
 
@@ -89,6 +92,7 @@ ID3D11Buffer* g_pCubeVertexBuffer = nullptr;
 ID3D11Buffer* g_pCubeModelBuffer = nullptr;
 ID3D11Buffer* g_pCubeVPBuffer = nullptr;
 ID3D11ShaderResourceView* g_pCubeTextureRV = nullptr;
+
 ID3D11VertexShader* g_pSkyboxVertexShader = nullptr;
 ID3D11PixelShader* g_pSkyboxPixelShader = nullptr;
 ID3D11InputLayout* g_pSkyboxInputLayout = nullptr;
@@ -125,18 +129,22 @@ POINT g_MousePrev = { 0, 0 };
 XMFLOAT3 g_CameraPos;
 float g_CameraAzim = 0.0f;
 float g_CameraPlace = 0.0f;
-
+// Yellow-ish?
 Lighting g_Lightings[2] = {
-	{ XMFLOAT4(2.0f, 2.0f, 2.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 0.0f), XMFLOAT4(1.0f, 0.1f, 0.01f, 0.0f) },
-	{ XMFLOAT4(0.0f, 2.0f, -2.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 0.0f), XMFLOAT4(1.0f, 0.1f, 0.01f, 0.0f) } };
+	{ XMFLOAT4(2.0f, 2.0f, 2.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 0.5f, 0.0f), XMFLOAT4(1.0f, 0.1f, 0.01f, 0.0f) },
+	{ XMFLOAT4(0.0f, 2.0f, -2.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 0.5f, 0.0f), XMFLOAT4(1.0f, 0.1f, 0.01f, 0.0f) } };
 
-
+//Texture Cube
 ColorCube g_TexCube = { XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMMatrixTranslation(0.0f, 0.0f, 0.0f), true };
+// Solid Cube
 ColorCube g_ColCube = { XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMMatrixTranslation(1.0f, 2.0f, 1.5f), false };
+// Glass cube 1
 TransCube g_TransCube1 = { XMFLOAT4(0.0f, 1.0f, 1.0f, 0.5f), XMMatrixTranslation(-2.0f, -1.0f, 0.0f) };
+// Glass cube 2
 TransCube g_TransCube2 = { XMFLOAT4(1.0f, 0.0f, 1.0f, 0.5f), XMMatrixTranslation(2.5f, 1.0f, 0.0f) };
+// Light wraps
 ColorCube g_LightCube1 = { XMFLOAT4(g_Lightings[0].color.x, g_Lightings[0].color.y, g_Lightings[0].color.z, 1.0f),
-	  XMMatrixScaling(0.2f, 0.2f, 0.2f) * XMMatrixTranslation(g_Lightings[0].pos.x, g_Lightings[0].pos.y, g_Lightings[0].pos.z),
+	  XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(g_Lightings[0].pos.x, g_Lightings[0].pos.y, g_Lightings[0].pos.z),
 	  false };
 ColorCube g_LightCube2 = { XMFLOAT4(g_Lightings[1].color.x, g_Lightings[1].color.y, g_Lightings[1].color.z, 1.0f),
 	  XMMatrixScaling(0.2f, 0.2f, 0.2f) * XMMatrixTranslation(g_Lightings[1].pos.x, g_Lightings[1].pos.y, g_Lightings[1].pos.z),
@@ -144,8 +152,6 @@ ColorCube g_LightCube2 = { XMFLOAT4(g_Lightings[1].color.x, g_Lightings[1].color
 
 std::vector<ColorCube*> g_ColorCubes;
 std::vector<TransCube*> g_TransCubes;
-
-
 
 
 
@@ -447,53 +453,47 @@ HRESULT InitDevice()
 
 
 	SimpleVertex cubeVertices[] = {
-	{ { -0.5f, -0.5f, 0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f } },
-	{ {  0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f, -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f } },
+	{ {  0.5f,  0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f,  0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f,  0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f } },
 
-	{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f } },
+	{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f } },
+	{ { -0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ { -0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ {  0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f, -1.0f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f } },
 
-	{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f } },
-	{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, -0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 0.0f, 1.0f } },
+	{ { -0.5f, -0.5f,  0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 1.0f } },
+	{ { -0.5f,  0.5f,  0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, -0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 0.0f, 1.0f } },
+	{ { -0.5f,  0.5f,  0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f,  0.5f, -0.5f }, { -1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f } },
 
-	{ {  0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ { -0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f } },
+	{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 1.0f } },
+	{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 1.0f, 1.0f } },
+	{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 1.0f, 0.0f } },
+	{ { 0.5f, -0.5f,  0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 1.0f } },
+	{ { 0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 1.0f, 0.0f } },
+	{ { 0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 0.0f } },
 
-	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ { -0.5f, -0.5f,  0.5f }, { 1.0f, 1.0f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f } },
+	{ { -0.5f, 0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f, 0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f } },
+	{ {  0.5f, 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, 0.5f,  0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f, 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f } },
 
-	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ { -0.5f,  0.5f,  0.5f }, { 1.0f, 0.0f } },
-	{ { -0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f } },
-
-	{ {  0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
-
-	{ {  0.5f, -0.5f,  0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
-	{ {  0.5f,  0.5f,  0.5f }, { 0.0f, 0.0f } },
-
-	{ { -0.5f,  0.5f,  0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f,  0.5f,  0.5f }, { 1.0f, 1.0f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
-
-	{ { -0.5f,  0.5f,  0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f,  0.5f, -0.5f }, { 1.0f, 0.0f } },
-	{ { -0.5f,  0.5f, -0.5f }, { 0.0f, 0.0f } },
-
-	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f } },
-	{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 0.0f } },
-
-	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, 1.0f } },
-	{ {  0.5f, -0.5f,  0.5f }, { 1.0f, 0.0f } },
-	{ { -0.5f, -0.5f,  0.5f }, { 0.0f, 0.0f } },
+	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f, -0.5f, -0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 1.0f } },
+	{ {  0.5f, -0.5f,  0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f, -0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ {  0.5f, -0.5f,  0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ { -0.5f, -0.5f,  0.5f }, { 0.0f, -1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f } }
 	};
 	D3D11_BUFFER_DESC bd = {};
 	bd.Usage = D3D11_USAGE_DEFAULT;
@@ -525,6 +525,10 @@ HRESULT InitDevice()
 
 
 	hr = CreateDDSTextureFromFile(g_pd3dDevice, L"cube.dds", nullptr, &g_pCubeTextureRV);
+	if (FAILED(hr))
+		return hr;
+	/// Used as normal map.
+	hr = CreateDDSTextureFromFile(g_pd3dDevice, L"wall.dds", nullptr, &g_pCubeNormalMapRV);
 	if (FAILED(hr))
 		return hr;
 
@@ -648,9 +652,11 @@ HRESULT InitDevice()
 	if (FAILED(hr)) { pBlob->Release(); return hr; }
 
 	D3D11_INPUT_ELEMENT_DESC layoutColorDesc[] = {
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+		{"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
-	hr = g_pd3dDevice->CreateInputLayout(layoutColorDesc, 1, pBlob->GetBufferPointer(), pBlob->GetBufferSize(), &g_pColorCubeInputLayout);
+	UINT numColorDesc = ARRAYSIZE(layoutColorDesc);
+	hr = g_pd3dDevice->CreateInputLayout(layoutColorDesc, numColorDesc, pBlob->GetBufferPointer(), pBlob->GetBufferSize(), &g_pColorCubeInputLayout);
 	pBlob->Release();
 	if (FAILED(hr)) return hr;
 
@@ -662,7 +668,7 @@ HRESULT InitDevice()
 
 	bd = {};
 	bd.Usage = D3D11_USAGE_DEFAULT;
-	bd.ByteWidth = sizeof(XMMATRIX);
+	bd.ByteWidth = 2 * sizeof(XMMATRIX);
 	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pColorCubeModelBuffer);
 	if (FAILED(hr)) return hr;
@@ -697,6 +703,20 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&depthDesc, &g_pTransparentDepthState);
 	if (FAILED(hr))
 		return hr;
+
+	D3D11_BUFFER_DESC lightBufferDesc = {};
+	lightBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	lightBufferDesc.ByteWidth = sizeof(Lighting) * 2;
+	lightBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	lightBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	hr = g_pd3dDevice->CreateBuffer(&lightBufferDesc, nullptr, &g_pLightBuffer);
+
+	D3D11_BUFFER_DESC cameraBufferDesc = {};
+	cameraBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	cameraBufferDesc.ByteWidth = sizeof(XMFLOAT4);
+	cameraBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	cameraBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	hr = g_pd3dDevice->CreateBuffer(&cameraBufferDesc, nullptr, &g_pCameraBuffer);
 
 	return S_OK;
 }
@@ -798,11 +818,15 @@ void RenderColorCube(ColorCube* cube)
 		g_pImmediateContext->IASetInputLayout(g_pCubeInputLayout);
 		g_pImmediateContext->VSSetShader(g_pCubeVertexShader, nullptr, 0);
 		g_pImmediateContext->PSSetShader(g_pCubePixelShader, nullptr, 0);
-		g_pImmediateContext->PSSetShaderResources(0, 1, &g_pCubeTextureRV);
+		ID3D11ShaderResourceView* textures[2] = { g_pCubeTextureRV, g_pCubeNormalMapRV };
+		g_pImmediateContext->PSSetShaderResources(0, 2, textures);
 		g_pImmediateContext->PSSetSamplers(0, 1, &g_pSamplerLinear);
 		XMMATRIX posT = XMMatrixTranspose(cube->position);
 		g_pImmediateContext->UpdateSubresource(g_pCubeModelBuffer, 0, nullptr, &posT, 0, 0);
 		g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCubeModelBuffer);
+		g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pCubeVPBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pLightBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(3, 1, &g_pCameraBuffer);
 	}
 	else {
 		g_pImmediateContext->IASetInputLayout(g_pColorCubeInputLayout);
@@ -812,7 +836,10 @@ void RenderColorCube(ColorCube* cube)
 		g_pImmediateContext->UpdateSubresource(g_pColorCubeModelBuffer, 0, nullptr, &posT, 0, 0);
 		g_pImmediateContext->UpdateSubresource(g_pColorCubeColorBuffer, 0, nullptr, &(cube->color), 0, 0);
 		g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pColorCubeModelBuffer);
-		g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pColorCubeColorBuffer);
+		g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pCubeVPBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pColorCubeColorBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(3, 1, &g_pLightBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(4, 1, &g_pCameraBuffer);
 	}
 	g_pImmediateContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
 	g_pImmediateContext->OMSetDepthStencilState(nullptr, 0);
@@ -828,7 +855,10 @@ void RenderTransCube(TransCube* cube)
 	g_pImmediateContext->UpdateSubresource(g_pColorCubeModelBuffer, 0, nullptr, &posT, 0, 0);
 	g_pImmediateContext->UpdateSubresource(g_pColorCubeColorBuffer, 0, nullptr, &(cube->color), 0, 0);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pColorCubeModelBuffer);
-	g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pColorCubeColorBuffer);
+	g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pCubeVPBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pColorCubeColorBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(3, 1, &g_pLightBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(4, 1, &g_pCameraBuffer);
 
 	float blending[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	g_pImmediateContext->OMSetBlendState(g_pTransparentBlendState, blending, 0xffffffff);
@@ -850,7 +880,7 @@ void Render()
 		GetClientRect(FindWindow(windowClass, windowName), &rc);
 		float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
 		proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
-		float radius = 8.0f;
+		float radius = 7.0f;
 		float camX = radius * sinf(g_CameraAzim) * cosf(g_CameraPlace);
 		float camY = radius * sinf(g_CameraPlace);
 		float camZ = radius * cosf(g_CameraAzim) * cosf(g_CameraPlace);
@@ -859,19 +889,29 @@ void Render()
 		XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 		view = XMMatrixLookAtLH(Eye, F, Up);
 		camView = XMVectorSet(camX, camY, camZ, 0.0f);
+		XMStoreFloat3(&g_CameraPos, camView);
+		D3D11_MAPPED_SUBRESOURCE mapped;
+		if (SUCCEEDED(g_pImmediateContext->Map(g_pCameraBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+			memcpy(mapped.pData, &g_CameraPos, sizeof(XMFLOAT3));
+			g_pImmediateContext->Unmap(g_pCameraBuffer, 0);
+		}
 	}
+
 
 
 	XMMATRIX viewSkybox = view;
 	viewSkybox.r[3] = XMVectorSet(0, 0, 0, 1);
 	XMMATRIX vpSkybox = XMMatrixTranspose(viewSkybox * proj);
-
-
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	if (SUCCEEDED(g_pImmediateContext->Map(g_pSkyboxVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource)))
 	{
 		memcpy(mappedResource.pData, &vpSkybox, sizeof(XMMATRIX));
 		g_pImmediateContext->Unmap(g_pSkyboxVPBuffer, 0);
+	}
+	D3D11_MAPPED_SUBRESOURCE mapped;
+	if (SUCCEEDED(g_pImmediateContext->Map(g_pLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+		memcpy(mapped.pData, g_Lightings, sizeof(Lighting) * 2);
+		g_pImmediateContext->Unmap(g_pLightBuffer, 0);
 	}
 
 
@@ -932,6 +972,8 @@ void Render()
 		g_ColorCubes.clear();
 		g_ColorCubes.push_back(&g_TexCube);
 		g_ColorCubes.push_back(&g_ColCube);
+		g_ColorCubes.push_back(&g_LightCube1);
+		g_ColorCubes.push_back(&g_LightCube2);
 		g_TransCubes.clear();
 		if (XMVectorGetX(XMVector3LengthSq(g_TransCube1.position.r[3] - camView)) >
 			XMVectorGetX(XMVector3LengthSq(g_TransCube2.position.r[3] - camView)))
@@ -969,10 +1011,8 @@ void Render()
 		g_pImmediateContext->Draw(36, 0);*/
 	}
 
-
 	g_pSwapChain->Present(1, 0);
 }
-
 
 
 
@@ -998,6 +1038,9 @@ void CleanupDevice()
 	if (g_pSkyboxPixelShader) g_pSkyboxPixelShader->Release();
 	if (g_pSkyboxVPBuffer) g_pSkyboxVPBuffer->Release();
 	if (g_pSkyboxTextureRV) g_pSkyboxTextureRV->Release();
+	if (g_pLightBuffer) g_pLightBuffer->Release();
+	if (g_pCameraBuffer) g_pCameraBuffer->Release();
+	if (g_pCubeNormalMapRV) g_pCubeNormalMapRV->Release();
 	if (g_pColorCubeModelBuffer) g_pColorCubeModelBuffer->Release();
 	if (g_pColorCubeColorBuffer) g_pColorCubeColorBuffer->Release();
 	if (g_pColorCubeInputLayout) g_pColorCubeInputLayout->Release();
@@ -1007,7 +1050,4 @@ void CleanupDevice()
 	if (g_pTransparentDepthState) g_pTransparentDepthState->Release();
 	if (g_pTransparentDepthStencilState) g_pTransparentDepthStencilState->Release();
 	if (g_pTransparentBlendState) g_pTransparentBlendState->Release();
-	if (g_pLightBuffer) g_pLightBuffer->Release();
-	if (g_pCameraBuffer) g_pCameraBuffer->Release();
-	if (g_pCubeNormalMapRV) g_pCubeNormalMapRV->Release();
 }
