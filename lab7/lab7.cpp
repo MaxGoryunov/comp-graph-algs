@@ -46,8 +46,8 @@ struct Lighting {
 };
 
 struct InstanceData {
-	XMMATRIX position;
-	int texture;
+	XMMATRIX modelMatrix;
+	int textureIndex;
 	XMFLOAT3 padding;
 };
 
@@ -79,6 +79,7 @@ struct CBViewProjection
 struct ColorCube {
 	XMFLOAT4 color;
 	XMMATRIX position;
+	bool hasTexture;
 	int texture = 0;
 };
 
@@ -174,13 +175,13 @@ Lighting g_Lightings[2] = {
 	{ XMFLOAT4(0.0f, 2.0f, -2.0f, 0.0f), XMFLOAT4(1.0f, 1.0f, 0.5f, 0.0f), XMFLOAT4(1.0f, 0.1f, 0.01f, 0.0f) } };
 
 //Texture Cube
-ColorCube g_TexCube = { XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMMatrixTranslation(0.0f, 0.0f, 0.0f)};
+ColorCube g_TexCube = { XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMMatrixTranslation(0.0f, 0.0f, 0.0f), true};
 // Solid Cube
-ColorCube g_ColCube = { XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMMatrixTranslation(1.0f, 2.0f, 1.5f) };
+ColorCube g_ColCube = { XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f), XMMatrixTranslation(1.0f, 2.0f, 1.5f), true };
 // Glass cube 1
-TransCube g_TransCube1 = { XMFLOAT4(0.0f, 1.0f, 1.0f, 0.5f), XMMatrixTranslation(-2.0f, -1.0f, 0.0f) };
+TransCube g_TransCube1 = { XMFLOAT4(0.0f, 1.0f, 1.0f, 0.5f), XMMatrixTranslation(-2.0f, -1.0f, 0.0f)};
 // Glass cube 2
-TransCube g_TransCube2 = { XMFLOAT4(1.0f, 0.0f, 1.0f, 0.5f), XMMatrixTranslation(2.5f, 1.0f, 0.0f) };
+TransCube g_TransCube2 = { XMFLOAT4(1.0f, 0.0f, 1.0f, 0.5f), XMMatrixTranslation(2.5f, 1.0f, 0.0f)};
 // Light wraps
 ColorCube g_LightCube1 = { XMFLOAT4(g_Lightings[0].color.x, g_Lightings[0].color.y, g_Lightings[0].color.z, 1.0f),
 	  XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(g_Lightings[0].pos.x, g_Lightings[0].pos.y, g_Lightings[0].pos.z),
@@ -1114,6 +1115,35 @@ void RenderTransCube(TransCube* cube)
 	PostDraw();
 }
 
+void DrawCubes(std::vector<InstanceData>& visibleInstances,
+	Plane* frustumPlanes, int cubeCount, float radius) {
+	for (int i = 0; i < cubeCount; i++) {
+		// Calculate fixed position in circle (X/Z)
+		float angle = XM_2PI * i / cubeCount; // Base angle for circular arrangement
+		float x = radius * cosf(angle);
+		float z = radius * sinf(angle);
+
+		// Vertical movement using sine wave with phase offset
+		float y = radius * 0.5f * sinf(angle); // Adjust amplitude as needed
+
+		XMVECTOR cubePos = XMVectorSet(x, y, z, 1.0f);
+		if (g_EnableFrustumCulling &&
+			!IsSphereInFrustum(frustumPlanes, cubePos, 1.2f)) {
+			continue;
+		}
+
+		// Create world matrix with scaling, optional rotation, and translation
+		XMMATRIX world = XMMatrixScaling(1.2f, 1.2f, 1.2f) *
+			XMMatrixRotationY(angle) * // Remove if no rotation needed
+			XMMatrixTranslation(x, y, z);
+
+		InstanceData data;
+		data.modelMatrix = XMMatrixTranspose(world);
+		data.textureIndex = i % g_CubeTextures.size();
+		visibleInstances.push_back(data);
+	}
+}
+
 
 void Render()
 {
@@ -1221,7 +1251,7 @@ void Render()
 		XMMATRIX vpPlain = view * proj;
 		XMMATRIX vpCube = XMMatrixTranspose(view * proj);
 		Plane frustumPlanes[6];
-		ExtractFrustumPlanes(vpCube, frustumPlanes);
+		ExtractFrustumPlanes(vpPlain, frustumPlanes);
 		for (int i = 0; i < 6; i++) {
 			float len = sqrtf(frustumPlanes[i].a * frustumPlanes[i].a +
 				frustumPlanes[i].b * frustumPlanes[i].b +
@@ -1239,11 +1269,13 @@ void Render()
 			g_pImmediateContext->Unmap(g_pCubeVPBuffer, 0);
 		}
 
+		g_Instances.clear();
 		g_ColorCubes.clear();
 		g_ColorCubes.push_back(&g_TexCube);
 		g_ColorCubes.push_back(&g_ColCube);
 		g_ColorCubes.push_back(&g_LightCube1);
 		g_ColorCubes.push_back(&g_LightCube2);
+
 		g_TransCubes.clear();
 		if (XMVectorGetX(XMVector3LengthSq(g_TransCube1.position.r[3] - camView)) >
 			XMVectorGetX(XMVector3LengthSq(g_TransCube2.position.r[3] - camView)))
@@ -1256,6 +1288,38 @@ void Render()
 			g_TransCubes.push_back(&g_TransCube1);
 		}
 
+		int cubeCount = 10;
+		std::vector<InstanceData> visibleInstances;
+		g_totalInstances = 2 * cubeCount;
+		float radius = 3.0f;
+		DrawCubes(visibleInstances, frustumPlanes, cubeCount, radius);
+		radius = 15.0f;
+		DrawCubes(visibleInstances, frustumPlanes, cubeCount, radius);
+
+		g_finalInstanceCount = static_cast<int>(visibleInstances.size());
+
+		for (auto& cube : g_Cubes) {
+			if (cube.isTextured) {
+				XMVECTOR cubePos = cube.modelMatrix.r[3];
+				if (g_EnableFrustumCulling &&
+					!IsSphereInFrustum(frustumPlanes, cubePos, 1.0f)) {
+					continue;
+				}
+
+				InstanceData data;
+				data.modelMatrix = XMMatrixTranspose(cube.modelMatrix);
+				data.textureIndex = cube.textureIndex;
+				visibleInstances.push_back(data);
+				g_finalInstanceCount++;
+			}
+			else {
+				if (cube.isTransparent)
+					g_TransparentObjects.push_back(&cube);
+				else
+					g_NonTransparentObjects.push_back(&cube);
+			}
+		}
+
 		for (auto& cube : g_ColorCubes)
 		{
 			RenderColorCube(cube);
@@ -1265,6 +1329,8 @@ void Render()
 		{
 			RenderTransCube(cube);
 		}
+
+
 
 
 		/*UINT stride = sizeof(SimpleVertex);
